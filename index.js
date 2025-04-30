@@ -1,18 +1,18 @@
 const net = require('net')
-const store = {}
+const store = {};
+const expiryMap = {};          // key -> expiration timestamp (in ms)
+
+
 function Parser(data) {
     const parsed = data.toString().trim().split(/\r?\n/)
-    if (parsed[2] === 'set') {
-        const filter = parsed.filter((key) => !key.startsWith('*') && !key.startsWith('$'))
-        return filter
-    } else if (parsed[2] === 'get') {
-        const filter = parsed.filter((key) => !key.startsWith('*') && !key.startsWith('$'))
-        return filter
-    } else if (parsed[2] === 'del') {
+    console.log(parsed)
+    if (parsed[2] === 'set' || parsed[2] === 'SET' || parsed[2] === 'get' || parsed[2] === 'GET' || parsed[2] === 'DEL' || parsed[2] === 'del' || parsed[2] === 'expire' || parsed[2] === 'EXPIRE' || parsed[2] === 'ttl' || parsed[2] === "TTL") {
         const filter = parsed.filter((key) => !key.startsWith('*') && !key.startsWith('$'))
         return filter
     }
 }
+
+
 const server = net.createServer(con => {
     console.log("client connected")
     con.on('data', data => {
@@ -21,13 +21,13 @@ const server = net.createServer(con => {
             con.write('-Error parsing command\r\n');
             return;
         }
-        const command = result[0];
+        const command = result[0].toLowerCase();
         switch (command) {
             case 'set': {
-                if (result.length === 4) {
+                if (result.length > 3) {
                     con.write("-SYNTAX invalid syntax\r\n")
 
-                } else if(result.length === 3) {
+                } else if (result.length >= 3) {
                     const key = result[1];
                     const value = result[2];
                     store[key] = value;
@@ -36,31 +36,90 @@ const server = net.createServer(con => {
             }
                 break;
             case 'get': {
-                const value = store[result[1]];
-                if (!value) con.write('$-1\r\n');
-                else {
-                    con.write(`$${value.length}\r\n${value}\r\n`)
+                if (result.length > 2) {
+                    con.write("-SYNTAX invalid syntax\r\n")
+
+                } else {
+                    const value = store[result[1]];
+                    if (!value) con.write('$-1\r\n');
+                    else {
+                        con.write(`$${value.length}\r\n${value}\r\n`)
+                    }
+
+
                 }
+
             }
                 break;
             case 'del': {
-                // console.log(value)
-                if (result[1].includes('[')) {
-                    const forDel = result[1].slice(1, -1).split(",").map(key => key.trim());
-
-                    forDel.forEach(key => delete store[key])
-                    console.log(rs)
-                    con.write(`:${forDel.length}\r\n`)
+                if (result.length > 2) {
+                    con.write("-SYNTAX invalid syntax\r\n")
 
                 } else {
-                    // Delete single key
-                    const key = result[1];
-                    if (store[key] !== undefined) {
-                        delete store[key];
-                        con.write(`:1\r\n`);
+                    if (result[1].includes('[')) {
+                        const forDel = result[1].slice(1, -1).split(",").map(key => key.trim());
+
+                        forDel.forEach(key => delete store[key])
+
+                        con.write(`:${forDel.length}\r\n`)
+
                     } else {
-                        con.write('$-1\r\n');
+                        // Delete single key
+                        const key = result[1];
+                        if (store[key] !== undefined) {
+                            delete store[key];
+                            con.write(`:1\r\n`);
+                        } else {
+                            con.write('$-1\r\n');
+                        }
                     }
+                }
+                break;
+            }
+            case 'expire': {
+                if (result.length !== 3) {
+                    con.write("-SYNTAX invalid syntax\r\n");
+                    break;
+                }
+
+                const key = result[1];
+                const isAlready= store[result[1]]
+                if (isAlready) {
+                    con.write("-2\r\n");
+                    
+                }
+                const expireTime = Number(result[2]) * 1000;
+
+                if (store[key] !== undefined) {
+                    const expireAt = Date.now() + expireTime;
+                    expiryMap[key] = expireAt;
+
+                    setTimeout(() => {
+                        delete store[key];
+                        delete expiryMap[key];
+                    }, expireTime);
+
+                    con.write(`:1\r\n`);
+                } else {
+                    con.write(`:0\r\n`);
+                }
+                break;
+            }
+            case 'ttl': {
+                if (result.length !== 2) {
+                    con.write("-SYNTAX invalid syntax\r\n");
+                    break;
+                }
+
+                const key = result[1];
+
+                if (store[key] === undefined) {
+                    con.write(`:-2\r\n`);
+                } else if (!expiryMap[key]) {
+                    con.write(`:-1\r\n`);
+                } else {
+                    const remaining = Math.floor((expiryMap[key] - Date.now()) / 1000);
+                    con.write(`:${Math.max(remaining, 0)}\r\ns`);
                 }
                 break;
             }

@@ -9,6 +9,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "nodemon": "^3.1.10",
     "redis-parser": "^3.0.0"
   }
 }
