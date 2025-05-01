@@ -5,7 +5,7 @@ const expiryMap = {};          // key -> expiration timestamp (in ms)
 
 function Parser(data) {
     const parsed = data.toString().trim().split(/\r?\n/)
-    console.log(parsed)
+   
     if (parsed[2] === 'set' || parsed[2] === 'SET' || parsed[2] === 'get' || parsed[2] === 'GET' || parsed[2] === 'DEL' || parsed[2] === 'del' || parsed[2] === 'expire' || parsed[2] === 'EXPIRE' || parsed[2] === 'ttl' || parsed[2] === "TTL") {
         const filter = parsed.filter((key) => !key.startsWith('*') && !key.startsWith('$'))
         return filter
@@ -24,14 +24,44 @@ const server = net.createServer(con => {
         const command = result[0].toLowerCase();
         switch (command) {
             case 'set': {
-                if (result.length > 3) {
+                if (result.length>5) {
                     con.write("-SYNTAX invalid syntax\r\n")
 
-                } else if (result.length >= 3) {
+                } else if (result.length === 3) {
                     const key = result[1];
                     const value = result[2];
                     store[key] = value;
                     con.write('+DONE BRO\r\n')
+                } else if (result[3].toLowerCase() === 'ex') {
+
+                    const isAlready = expiryMap[result[1]]
+                    if (isAlready) {
+                        con.write("-Already exist\r\n");
+
+                    } else {
+                        const key = result[1];
+                        const value = result[2];
+                        store[key] = value;
+
+                        const expireTime = Number(result[4]) * 1000;
+
+                        if (store[key] !== undefined) {
+                            const expireAt = Date.now() + expireTime;
+                            expiryMap[key] = expireAt;
+
+                            setTimeout(() => {
+                                delete store[key];
+                                delete expiryMap[key];
+                            }, expireTime);
+
+                            con.write(`+OK Bro\r\n`);
+                        } else {
+                            con.write("-SYNTAX invalid syntax\r\n")
+                        }
+
+                    }
+
+
                 }
             }
                 break;
@@ -83,26 +113,30 @@ const server = net.createServer(con => {
                 }
 
                 const key = result[1];
-                const isAlready= store[result[1]]
+                const isAlready = expiryMap[result[1]]
                 if (isAlready) {
-                    con.write("-2\r\n");
-                    
-                }
-                const expireTime = Number(result[2]) * 1000;
+                    con.write("-Already exist\r\n");
 
-                if (store[key] !== undefined) {
-                    const expireAt = Date.now() + expireTime;
-                    expiryMap[key] = expireAt;
-
-                    setTimeout(() => {
-                        delete store[key];
-                        delete expiryMap[key];
-                    }, expireTime);
-
-                    con.write(`:1\r\n`);
                 } else {
-                    con.write(`:0\r\n`);
+
+                    const expireTime = Number(result[2]) * 1000;
+
+                    if (store[key] !== undefined) {
+                        const expireAt = Date.now() + expireTime;
+                        expiryMap[key] = expireAt;
+
+                        setTimeout(() => {
+                            delete store[key];
+                            delete expiryMap[key];
+                        }, expireTime);
+
+                        con.write(`:1\r\n`);
+                    } else {
+                        con.write(`:0\r\n`);
+                    }
+
                 }
+
                 break;
             }
             case 'ttl': {
@@ -114,12 +148,12 @@ const server = net.createServer(con => {
                 const key = result[1];
 
                 if (store[key] === undefined) {
-                    con.write(`:-2\r\n`);
+                    con.write(`-This key have no TTL\r\n`);
                 } else if (!expiryMap[key]) {
                     con.write(`:-1\r\n`);
                 } else {
                     const remaining = Math.floor((expiryMap[key] - Date.now()) / 1000);
-                    con.write(`:${Math.max(remaining, 0)}\r\ns`);
+                    con.write(`:${Math.max(remaining, 0)}\r\n`);
                 }
                 break;
             }

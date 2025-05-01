@@ -1,142 +1,163 @@
-# Custom Redis Server
+# Mini-Redis Server
 
-This project is a simple **Redis-like** server built with Node.js using the `net` module.  
-It accepts basic Redis-style commands (`SET`, `GET`, `DEL`) over a TCP connection.
+A lightweight Redis-like server built with Node.js. This project implements core Redis functionality using the native `net` module to handle TCP connections and Redis-style commands.
 
-## Features
+![Redis Server Banner](https://raw.githubusercontent.com/khushal40312/own_redis/master/banner.png)
 
-- **SET key value** – Store a value by key.
-- **GET key** – Retrieve a value by key.
-- **DEL key** – Delete a single key.
-- **DEL [key1,key2,...]** – Delete multiple keys at once.
+## ✨ Features
 
-The server uses a simple JavaScript object as an in-memory key-value store.
+- **Core Redis Commands**: Supports `SET`, `GET`, `DEL`, `EXPIRE`, and `TTL`
+- **Key Expiration**: Automatic key expiration with `EXPIRE` or `SET key value EX seconds`
+- **Bulk Operations**: Delete multiple keys at once with `DEL [key1,key2,...]`
+- **RESP Protocol**: Simplified implementation of the Redis Serialization Protocol
+- **Purely In-Memory**: Fast performance with no disk I/O
+- **Lightweight**: Zero dependencies, just Node.js standard library
 
-## How to Run
+## 🚀 Quick Start
 
-1. Clone or download this project.
-2. Install Node.js if you haven't already.
-3. Run the server:
+### Prerequisites
+
+- Node.js (v12.0.0 or higher)
+
+### Installation
 
 ```bash
+# Clone the repository
+git clone https://github.com/khushal40312/own_redis.git
+
+# Navigate to the project directory
+cd own_redis
+
+# Run the server
 node server.js
 ```
 
-You should see:
-
+When running properly, you should see:
 ```
 Custom Redis Server running on port 8000
 ```
 
-## How It Works
+## 📝 Usage
 
-- The server listens on port **8000** for TCP connections.
-- It expects **RESP-like** (Redis Serialization Protocol) commands.
-- Commands are parsed and processed:
-  - `SET key value` stores a key-value pair.
-  - `GET key` retrieves a value for the given key.
-  - `DEL key` deletes a key.
-  - `DEL [key1,key2,...]` deletes multiple keys.
+You can interact with the server using any Redis client, or directly using `netcat` or `telnet`:
 
-### Example Commands
-
-**SET a 10**
-
-Client sends:
-
-```
-*3
-$3
-set
-$1
-a
-$2
-10
+```bash
+# Using netcat
+nc localhost 8000
 ```
 
-Server responds:
+### Supported Commands
+
+| Command | Description | Example | Response |
+|---------|-------------|---------|----------|
+| `SET key value` | Store a value | `SET name John` | `+DONE BRO` |
+| `SET key value EX seconds` | Store with expiration | `SET token abc123 EX 60` | `+OK Bro` |
+| `GET key` | Retrieve a value | `GET name` | `$4\r\nJohn\r\n` |
+| `DEL key` | Delete a key | `DEL name` | `:1` |
+| `DEL [key1,key2,...]` | Delete multiple keys | `DEL [name,age,city]` | `:3` |
+| `EXPIRE key seconds` | Set expiration time | `EXPIRE session 300` | `:1` |
+| `TTL key` | Get remaining time to live | `TTL session` | `:298` |
+
+### Example Session
 
 ```
+> SET user:1 "Alice"
 +DONE BRO
-```
-
----
-
-**GET a**
-
-Client sends:
-
-```
-*2
-$3
-get
-$1
-a
-```
-
-Server responds:
-
-```
-$2
-10
-```
-
----
-
-**DEL a**
-
-Client sends:
-
-```
-*2
-$3
-del
-$1
-a
-```
-
-Server responds:
-
-```
+> GET user:1
+$5
+Alice
+> SET login:token abc123 EX 60
++OK Bro
+> TTL login:token
+:58
+> DEL [user:1,unused:key]
 :1
 ```
 
----
+## 📊 Redis Protocol Implementation
 
-**DEL [a,b,c]**
-
-Client sends:
+This server implements a simplified version of the Redis Serialization Protocol (RESP). Clients should format commands as:
 
 ```
-*2
+*<number-of-arguments>
+$<bytes-of-argument-1>
+<argument-1>
+$<bytes-of-argument-2>
+<argument-2>
+...
+```
+
+Example of `SET name John` in RESP format:
+```
+*3
 $3
-del
-$7
-[a,b,c]
+SET
+$4
+name
+$4
+John
 ```
 
-Server responds:
+## ⚙️ Internal Architecture
 
+The server uses two main in-memory data structures:
+- `store`: Object storing all key-value pairs
+- `expiryMap`: Object mapping keys to their expiration timestamps
+
+When a key expires, it's automatically removed from both structures using JavaScript's `setTimeout`.
+
+## 🧪 Running Tests
+
+```bash
+# Install test dependencies
+npm install -D mocha chai
+
+# Run tests
+npm test
 ```
-:3
+
+## 🛠️ Advanced Usage
+
+### Custom Port
+
+To run the server on a custom port:
+
+```bash
+# Set PORT environment variable
+PORT=6380 node server.js
 ```
+
+### Performance Tuning
+
+For high-throughput scenarios:
+- Increase Node.js heap size: `node --max-old-space-size=4096 server.js`
+- Run multiple instances behind a load balancer
+
+## 🚧 Limitations & Future Improvements
+
+- **No Persistence**: Data exists only in memory
+- **No Authentication**: No password protection or access control
+- **Limited Command Set**: Only basic commands are implemented
+- **Single-Threaded**: Uses Node.js event loop (no worker threads)
+
+Planned improvements:
+- Add support for data structures (Lists, Sets, Hashes)
+- Implement basic persistence with RDB-like snapshots
+- Add basic authentication
+- Add pub/sub capabilities
+
+
+
+## 🤝 Contributing
+
+Contributions welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ---
 
-## Notes
-
-- The server does **not** persist data — it is an in-memory store only.
-- It uses basic command parsing; it is **not production-ready**.
-- It is designed for educational/demo purposes to understand how Redis-like TCP servers work.
-
-## Improvements to Consider
-
-- Proper RESP protocol handling.
-- Error handling for bad commands.
-- Support for additional Redis-like commands (e.g., `EXPIRE`, `INCR`).
-- Data persistence to disk.
-- Connection pooling or authentication.
-
-## License
-
-This project is free to use for learning purposes.
+Made with ❤️ by [Khushal Sharma]
